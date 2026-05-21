@@ -1,58 +1,111 @@
 # Flipping is Hard - Practice Trainer
 
-A simple trainer for the Unity game "Flipping is Hard Demo" that allows saving and restoring player positions for speedrun practice.
+A Unity IL2CPP trainer for "Flipping is Hard Demo" that enables position saving/restoring for speedrun practice. Perfect for mastering difficult sections without restarting.
 
-## Features
-- **Save position**: Press `Shift + R` to save current player position and rotation
-- **Restore position**: Press `R` to teleport back to saved position
-- **Physics reset**: Automatically resets velocity when teleporting
-- **On-screen overlay**: Shows controls and saved position status
-- **Works with both 3D and 2D physics** (Rigidbody & Rigidbody2D)
+![Trainer Overlay](https://img.shields.io/badge/Status-Working-brightgreen) ![Platform](https://img.shields.io/badge/Platform-Windows-blue) ![License](https://img.shields.io/badge/License-MIT-green)
 
-## How to Use
-1. **Build the trainer**:
-   ```
-   build.bat
-   ```
-   This will compile `trainer.dll` and `injector.exe`
+## ✨ Features
+- **📌 Position Save/Restore** - Save any position with `Shift+R`, teleport back with `R`
+- **🔄 Physics Reset** - Automatically zeroes velocity when teleporting (supports both 3D & 2D physics)
+- **🎮 On-Screen Overlay** - Real-time HUD showing controls and saved position status
+- **🔧 No Sound Effects** - Visual feedback only, no annoying beeps
+- **🎯 Works with IL2CPP** - Uses Unity's IL2CPP runtime for maximum compatibility
+- **⚡ Fast & Lightweight** - Minimal performance impact on the game
 
-2. **Start the game** ("Flipping is Hard Demo.exe")
+## 🚀 Quick Start
 
-3. **Inject the DLL**:
-   ```
-   injector.exe
-   ```
-   The injector will find the game process and load the trainer.
+### 1. **Build the Trainer**
+```bash
+build.bat
+```
+This compiles both `trainer.dll` and `injector.exe` using Visual Studio 2022.
 
-4. **In-game controls**:
-   - `Shift + R` → Save current position
-   - `R` → Teleport to saved position
-   - `END` → Unload trainer
+### 2. **Start the Game**
+Launch "Flipping is Hard Demo.exe" and get into gameplay.
 
-## Files
-- `trainer.cpp` - Main trainer DLL source code
-- `injector.cpp` - DLL injector source code  
-- `build.bat` - Build script for Visual Studio 2022
-- `trainer.dll` - Compiled trainer (output)
-- `injector.exe` - Compiled injector (output)
+### 3. **Inject the Trainer**
+```bash
+injector.exe
+```
+The injector automatically finds the game process and loads the trainer.
 
-## Requirements
-- Visual Studio 2022 (or compatible C++ compiler)
-- Windows 10/11
-- Game: "Flipping is Hard Demo" (Unity IL2CPP build)
+### 4. **Use In-Game**
+- **`Shift + R`** → Save current position & rotation
+- **`R`** → Teleport to saved position (resets physics)
+- **`END`** → Unload trainer
 
-## How It Works
-The trainer uses IL2CPP runtime inspection to:
-1. Resolve Unity engine functions via `GameAssembly.dll`
-2. Find the player GameObject by name/tag
-3. Use direct Transform icalls for position/rotation manipulation
-4. Reset physics velocity through Rigidbody components
+## 📁 Project Structure
+```
+Trainer/
+├── trainer.cpp          # Main trainer DLL (IL2CPP hooks + overlay)
+├── injector.cpp         # DLL injector (process injection)
+├── build.bat            # Build script for Visual Studio
+├── README.md            # This file
+└── .gitignore           # Excludes compiled binaries
+```
 
-## Notes
-- The overlay appears in the top-left corner showing controls and saved position
-- No sound effects - visual feedback only
-- Works in gameplay scenes where the player GameObject exists
-- Tested with the demo version of "Flipping is Hard"
+## 🛠️ Technical Details
 
-## License
-MIT License - free for personal and educational use.
+### How It Works
+1. **IL2CPP Resolution** - Hooks into `GameAssembly.dll` to resolve Unity engine functions
+2. **Player Detection** - Searches for player GameObject via tags (`"Player"`) and common names
+3. **Direct Transform Access** - Uses Unity's internal `Transform::get_position_Injected`/`set_position_Injected` icalls
+4. **Physics Integration** - Detects and resets both `Rigidbody` and `Rigidbody2D` velocity
+5. **Overlay System** - Creates a transparent always-on-top window with GDI+ rendering
+
+### Key Components
+- **Overlay Thread** - Separate thread for HUD rendering (330×110px, top-left corner)
+- **Thread-Safe Logging** - Console output with file logging to `trainer_log.txt`
+- **Error Handling** - Graceful failure if game isn't ready or player not found
+- **Clean Unload** - Proper cleanup on `END` key press
+
+## 📋 Requirements
+- **Windows 10/11** (x64)
+- **Visual Studio 2022** (or any C++17 compiler)
+- **Game**: "Flipping is Hard Demo" (Unity IL2CPP build)
+- **Administrator rights** (for process injection)
+
+## 🎮 Overlay Preview
+The overlay appears in the top-left corner with:
+```
+[Trainer]
+Shift+R  ->  Save position
+R        ->  Teleport
+[Pos saved: X, Y, Z]  (when position saved)
+```
+
+## ⚠️ Notes & Limitations
+- **Game Must Be Running** - Injector requires the game process to be active
+- **Player GameObject Required** - Only works in scenes with a player object
+- **Demo Version** - Tested with "Flipping is Hard Demo" (may work with full version)
+- **Anti-Cheat** - This is for single-player practice only
+- **Source Code** - 100% open source, no obfuscation
+
+## 🔧 Building from Source
+1. Install Visual Studio 2022 with C++ development tools
+2. Open Developer Command Prompt for VS 2022
+3. Navigate to project folder
+4. Run `build.bat` or manually:
+```bash
+cl.exe /LD /EHsc /O2 /Fe:trainer.dll trainer.cpp user32.lib gdi32.lib
+cl.exe /EHsc /O2 /Fe:injector.exe injector.cpp user32.lib
+```
+
+## 🤝 Contributing
+Found a bug or have an improvement? Feel free to:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
+
+## 📄 License
+MIT License - See [LICENSE](LICENSE) file for details.
+
+Free for personal, educational, and non-commercial use.
+
+## 🙏 Credits
+- **Game**: "Flipping is Hard" by [developer]
+- **Development**: Assisted by AI (because I don't know how to code 😅)
+- **Testing**: Community feedback welcome!
+
+---
+**Disclaimer**: This tool is for educational purposes and single-player practice only. Use responsibly.
