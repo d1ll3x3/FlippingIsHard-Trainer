@@ -83,6 +83,7 @@ The overlay appears in the bottom-left corner and top-right:
 ## ⚠️ Notes & Limitations
 - **Game Must Be Running** - Injector requires the game process to be active
 - **Source Code** - 100% open source, no obfuscation
+- **END** - Unload the trainer Will close the game
 
 ## 🔧 Building from Source
 1. Install Visual Studio 2022 with C++ development tools
