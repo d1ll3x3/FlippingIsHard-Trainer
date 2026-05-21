@@ -70,7 +70,7 @@ Trainer/
 ### Key Components
 - **Fly Mode Handler** - Camera-relative movement system with WASD controls following camera direction
 - **Camera Finder** - Aggressive camera detection via multiple methods (Camera.main, tags, names)
-- **Overlay Thread** - Separate thread for HUD rendering (350×180px, top-left corner)
+- **Overlay Thread** - Separate thread for HUD rendering (350×180px, bottom-left corner)
 - **Thread-Safe Logging** - Console output with file logging to `trainer_log.txt`
 - **Smart Caching** - Player and camera references cached to minimize performance impact
 - **Error Handling** - Graceful failure if game isn't ready or player not found
@@ -83,7 +83,7 @@ Trainer/
 - **Administrator rights** (for process injection)
 
 ## 🎮 Overlay Preview
-The overlay appears in the top-left corner with:
+The overlay appears in the bottom-left corner with:
 ```
 [Trainer]
 [FLY MODE ACTIVE]              (when fly mode is on)

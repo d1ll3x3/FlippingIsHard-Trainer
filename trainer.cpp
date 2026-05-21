@@ -207,11 +207,16 @@ DWORD WINAPI OverlayThread(LPVOID) {
     // Window size to fit the text block (increased for fly mode display)
     int W = 350, H = 180;
 
+    // Position bottom-left
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    int xPos = 12;
+    int yPos = screenHeight - H - 12;
+
     HWND hwnd = CreateWindowExA(
         WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
         CLASS_NAME, "",
         WS_POPUP,
-        12, 12, W, H,
+        xPos, yPos, W, H,
         nullptr, nullptr, hInst, nullptr);
 
     if (!hwnd) return 1;
