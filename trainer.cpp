@@ -124,7 +124,7 @@ static void PaintOverlay(HWND hwnd) {
 
     // Draw a dark rounded rectangle for HUD background
     int W = 360;
-    int hudHeight = 160;
+    int hudHeight = 184;
     if (g_flyModeActive.load()) hudHeight += 48;
     
     HBRUSH hudBrush = CreateSolidBrush(RGB(20, 20, 20));
@@ -200,10 +200,16 @@ static void PaintOverlay(HWND hwnd) {
     TextOutA(hdc, 10, yPos, line3, (int)strlen(line3));
     yPos += 24;
 
+    // Toggle logs
+    SetTextColor(hdc, RGB(180, 180, 180)); // grey
+    const char* line4 = "  F8        :  Toggle Logs ON/OFF";
+    TextOutA(hdc, 10, yPos, line4, (int)strlen(line4));
+    yPos += 24;
+
     // END to unload
     SetTextColor(hdc, RGB(200, 80, 80)); // red
-    const char* line4 = "  END       :  Unload Trainer";
-    TextOutA(hdc, 10, yPos, line4, (int)strlen(line4));
+    const char* line5 = "  END       :  Unload Trainer";
+    TextOutA(hdc, 10, yPos, line5, (int)strlen(line5));
 
     SelectObject(hdc, hOldFont);
     DeleteObject(hFont);
@@ -232,7 +238,7 @@ DWORD WINAPI OverlayThread(LPVOID) {
     RegisterClassExA(&wc);
 
     // Window size to fit the text block (increased for fly mode display)
-    int W = 360, H = 210;
+    int W = 360, H = 234;
 
     // Position bottom-left
     int screenHeight = GetSystemMetrics(SM_CYSCREEN);
@@ -274,9 +280,14 @@ DWORD WINAPI OverlayThread(LPVOID) {
     return 0;
 }
 
+// Global flag to enable/disable logging
+std::atomic<bool> g_enableLogging(true);
+
 // Log helper
 std::mutex g_logMutex;
 void Log(const std::string& msg) {
+    if (!g_enableLogging.load()) return;
+
     std::lock_guard<std::mutex> lock(g_logMutex);
     std::cout << "[Trainer] " << msg << std::endl;
     std::ofstream logFile("trainer_log.txt", std::ios_base::app);
@@ -520,7 +531,6 @@ void ResetVelocity(void* playerGo) {
             if (Rigidbody_set_angularVelocity_Method) {
                 InvokeMethod(Rigidbody_set_angularVelocity_Method, rb, velParams);
             }
-            Log("Player 3D physical velocity reset to 0.");
             return;
         }
     }
@@ -542,7 +552,6 @@ void ResetVelocity(void* playerGo) {
             if (Rigidbody2D_set_angularVelocity_Method) {
                 InvokeMethod(Rigidbody2D_set_angularVelocity_Method, rb2d, angParams);
             }
-            Log("Player 2D physical velocity reset to 0.");
             return;
         }
     }
@@ -765,10 +774,23 @@ DWORD WINAPI TrainerThread(LPVOID lpParam) {
         bool isShiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
         bool isRDown = (GetAsyncKeyState('R') & 0x8000) != 0;
         bool isFDown = (GetAsyncKeyState('F') & 0x8000) != 0;
+        bool isF8Down = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
 
         // Ensure we attach the IL2CPP runtime on each check frame to avoid thread collisions
         void* domain = il2cpp_domain_get_fn();
         il2cpp_thread_attach_fn(domain);
+
+        // Toggle Logging with F8
+        static bool f8PressedLast = false;
+        if (isF8Down && !f8PressedLast) {
+            g_enableLogging = !g_enableLogging;
+            if (g_enableLogging) {
+                Log("Logging ENABLED via hotkey");
+            } else {
+                std::cout << "[Trainer] Logging DISABLED via hotkey" << std::endl;
+            }
+        }
+        f8PressedLast = isF8Down;
 
         // Toggle fly mode with F key
         if (isFDown && !fPressedLast) {

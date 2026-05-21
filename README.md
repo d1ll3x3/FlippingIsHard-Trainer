@@ -34,6 +34,7 @@ The injector automatically finds the game process and loads the trainer.
 - **`Shift + R`** → Save current position & rotation
 - **`R`** → Teleport to saved position (resets physics)
 - **`F`** → Toggle Fly Mode ON/OFF
+- **`F8`** → Enable/Disable File & Console Logging
 - **Fly Mode Controls:**
   - `W` / `S` → Move forward/backward (relative to camera)
   - `A` / `D` → Move left/right (relative to camera)
@@ -68,6 +69,7 @@ The overlay appears in the bottom-left corner with:
   Shift+R   :  Save position
   R         :  Teleport (Ready)
   F         :  Toggle Fly Mode
+  F8        :  Toggle Logs ON/OFF
   END       :  Unload Trainer
 ```
 
