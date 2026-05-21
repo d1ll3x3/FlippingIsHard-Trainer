@@ -83,14 +83,17 @@ Trainer/
 - **Administrator rights** (for process injection)
 
 ## 🎮 Overlay Preview
+![HUD Preview](preview.jpg)
+
 The overlay appears in the bottom-left corner with:
-```
-[Trainer]
-[FLY MODE ACTIVE]              (when fly mode is on)
-WASD/Space/Ctrl to move        (fly mode controls)
-Shift+R  ->  Save position
-R        ->  Teleport
-F        ->  Toggle Fly Mode
+```text
+  FLIPPING IS HARD TRAINER
+  » FLY MODE ACTIVE            (when fly mode is on)
+     WASD/Space/Ctrl + Shift=Turbo
+  Shift+R   :  Save position
+  R         :  Teleport (Ready)
+  F         :  Toggle Fly Mode
+  END       :  Unload Trainer
 ```
 
 ## ⚠️ Notes & Limitations
