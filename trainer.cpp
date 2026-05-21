@@ -773,8 +773,12 @@ void HandleFlyMode(void* playerGo, void* cameraGo, float deltaTime) {
     };
     Transform_set_position_fn(nativeTransform, &newPos);
     
-    // ALWAYS keep velocity at zero while in fly mode (prevents falling)
-    ResetVelocity(playerGo);
+    // Reset velocity only if there is NO movement input (prevents falling while stationary)
+    // This makes the movement smoother while keys are pressed
+    bool isMoving = (movement.x != 0.0f || movement.y != 0.0f || movement.z != 0.0f);
+    if (!isMoving) {
+        ResetVelocity(playerGo);
+    }
 }
 
 DWORD WINAPI TrainerThread(LPVOID lpParam) {
