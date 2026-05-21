@@ -83,13 +83,8 @@ R        ->  Teleport
 
 ## 🔧 Building from Source
 1. Install Visual Studio 2022 with C++ development tools
-2. Open Developer Command Prompt for VS 2022
-3. Navigate to project folder
-4. Run `build.bat` or manually:
-```bash
-cl.exe /LD /EHsc /O2 /Fe:trainer.dll trainer.cpp user32.lib gdi32.lib
-cl.exe /EHsc /O2 /Fe:injector.exe injector.cpp user32.lib
-```
+2. Navigate to project folder
+3. Run `build.bat` 
 
 ## 🤝 Contributing
 Found a bug or have an improvement? Feel free to:
