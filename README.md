@@ -76,8 +76,8 @@ The overlay appears in the bottom-left corner and top-right:
 
 **Coordinates (Top-Right):**
 ```text
-  HEIGHT: 3.5 M
-  XYZ: 0.7, 3.5, 1.2
+  HEIGHT: 0.0 M
+  XYZ: 0.0, 0.0, 0.0
 ```
 
 ## ⚠️ Notes & Limitations
