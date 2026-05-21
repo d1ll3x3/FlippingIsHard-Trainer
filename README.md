@@ -103,7 +103,7 @@ MIT License - See [LICENSE](LICENSE) file for details.
 Free for personal, educational, and non-commercial use.
 
 ## 🙏 Credits
-- **Game**: "Flipping is Hard" by [developer]
+- **Game**: "Flipping is Hard" by [Elegant Horse Studios]
 - **Development**: Assisted by AI (because I don't know how to code 😅)
 - **Testing**: Community feedback welcome!
 
