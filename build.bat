@@ -17,4 +17,3 @@ cl.exe /LD /EHsc /O2 /Fe:trainer.dll trainer.cpp user32.lib gdi32.lib
 echo =========================================
 echo Build complete!
 echo =========================================
-pause

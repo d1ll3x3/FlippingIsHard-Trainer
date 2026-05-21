@@ -1,6 +1,5 @@
-#include <windows.h>
+﻿#include <windows.h>
 #include <iostream>
-#include <thread>
 #include <string>
 #include <fstream>
 #include <mutex>
@@ -11,6 +10,7 @@
 std::atomic<bool> g_overlayRunning(false);
 HWND             g_overlayHwnd = nullptr;
 HWND             g_posOverlayHwnd = nullptr;
+HWND             g_gameWindowHwnd = nullptr;  // Store the game window handle
 std::atomic<bool> g_hasSavedPosOverlay(false); // mirrors g_hasSavedPos for the overlay thread
 std::atomic<bool> g_flyModeActive(false);      // fly mode state for overlay
 
@@ -19,16 +19,9 @@ std::atomic<float> g_currX(0.0f);
 std::atomic<float> g_currY(0.0f);
 std::atomic<float> g_currZ(0.0f);
 
-// Structs for Unity types
-struct Vector3 {
-    float x, y, z;
-};
-struct Vector2 {
-    float x, y;
-};
-struct Quaternion {
-    float x, y, z, w;
-};
+// Unity types
+struct Vector3    { float x, y, z; };
+struct Quaternion { float x, y, z, w; };
 
 // IL2CPP Core Export Signatures
 typedef void* (*t_il2cpp_domain_get)();
@@ -84,29 +77,20 @@ t_Transform_set_position Transform_set_position_fn = nullptr;
 t_Transform_get_rotation Transform_get_rotation_fn = nullptr;
 t_Transform_set_rotation Transform_set_rotation_fn = nullptr;
 
-// Metada classes and methods pointers
-void* coreImage = nullptr;
+void* coreImage   = nullptr;
 void* physicsImage = nullptr;
-void* physics2DImage = nullptr;
 
 void* gameObjectClass = nullptr;
-void* transformClass = nullptr;
-void* rbClass = nullptr;
-void* rb2DClass = nullptr;
-void* cameraClass = nullptr;
+void* transformClass  = nullptr;
+void* rbClass         = nullptr;
 
-void* GameObject_Find_Method = nullptr;
-void* GameObject_FindWithTag_Method = nullptr;
+void* GameObject_Find_Method          = nullptr;
+void* GameObject_FindWithTag_Method   = nullptr;
 void* GameObject_get_transform_Method = nullptr;
-void* GameObject_GetComponent_Method = nullptr;
+void* GameObject_GetComponent_Method  = nullptr;
 
-void* Camera_get_main_Method = nullptr;
-
-void* Rigidbody_set_velocity_Method = nullptr;
+void* Rigidbody_set_velocity_Method        = nullptr;
 void* Rigidbody_set_angularVelocity_Method = nullptr;
-
-void* Rigidbody2D_set_velocity_Method = nullptr;
-void* Rigidbody2D_set_angularVelocity_Method = nullptr;
 
 // State variables
 bool g_hasSavedPos = false;
@@ -182,13 +166,13 @@ static void PaintOverlay(HWND hwnd) {
         yPos += 24;
     }
 
-    // Shortcut 1 – always shown
+    // Shortcut 1 ÔÇô always shown
     SetTextColor(hdc, RGB(255, 255, 255)); // white
     const char* line1 = "  Shift+R   :  Save position";
     TextOutA(hdc, 10, yPos, line1, (int)strlen(line1));
     yPos += 24;
 
-    // Shortcut 2 – green when position is saved, grey otherwise
+    // Shortcut 2 ÔÇô green when position is saved, grey otherwise
     if (g_hasSavedPosOverlay.load()) {
         SetTextColor(hdc, RGB(50, 255, 100)); // bright green
         const char* line2 = "  R         :  Teleport (Ready)";
@@ -317,19 +301,39 @@ DWORD WINAPI OverlayThread(LPVOID) {
     if (hwndPos) {
         g_posOverlayHwnd = hwndPos;
         SetLayeredWindowAttributes(hwndPos, RGB(255, 0, 255), 220, LWA_COLORKEY | LWA_ALPHA);
-        ShowWindow(hwndPos, SW_SHOWNOACTIVATE);
+        ShowWindow(hwndPos, SW_HIDE);  // Start hidden
         UpdateWindow(hwndPos);
     }
 
     // Make window magenta = fully transparent (color key), and 85% opacity (220/255) for the rest
     SetLayeredWindowAttributes(hwnd, RGB(255, 0, 255), 220, LWA_COLORKEY | LWA_ALPHA);
-    ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    ShowWindow(hwnd, SW_HIDE);  // Start hidden
     UpdateWindow(hwnd);
 
     g_overlayRunning = true;
 
     MSG msg;
+    int hideCheckCounter = 0;
     while (g_overlayRunning.load()) {
+        // Check if game window is in foreground (every 10 iterations to reduce overhead)
+        if (hideCheckCounter++ > 10) {
+            hideCheckCounter = 0;
+            HWND foreground = GetForegroundWindow();
+            
+            // If we have a game window handle, compare against it
+            if (g_gameWindowHwnd != nullptr) {
+                if (foreground == g_gameWindowHwnd) {
+                    // Game is in focus - show overlays
+                    ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+                    if (g_posOverlayHwnd) ShowWindow(g_posOverlayHwnd, SW_SHOWNOACTIVATE);
+                } else {
+                    // Game is not in focus - hide overlays
+                    ShowWindow(hwnd, SW_HIDE);
+                    if (g_posOverlayHwnd) ShowWindow(g_posOverlayHwnd, SW_HIDE);
+                }
+            }
+        }
+        
         // Invalidate every 100 ms so the HUD updates when saved-state changes
         if (PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) break;
@@ -483,170 +487,92 @@ bool ResolveIL2CPP() {
     for (size_t i = 0; i < assembliesCount; ++i) {
         void* img = il2cpp_assembly_get_image_fn(assemblies[i]);
         if (!img) continue;
-        
         const char* name = il2cpp_image_get_name_fn(img);
-        if (strcmp(name, "UnityEngine.CoreModule") == 0 || strcmp(name, "UnityEngine.CoreModule.dll") == 0) {
-            coreImage = img;
-        } else if (strcmp(name, "UnityEngine.PhysicsModule") == 0 || strcmp(name, "UnityEngine.PhysicsModule.dll") == 0) {
-            physicsImage = img;
-        } else if (strcmp(name, "UnityEngine.Physics2DModule") == 0 || strcmp(name, "UnityEngine.Physics2DModule.dll") == 0) {
-            physics2DImage = img;
-        }
+        if (!coreImage    && (strcmp(name, "UnityEngine.CoreModule") == 0    || strcmp(name, "UnityEngine.CoreModule.dll") == 0))    coreImage = img;
+        if (!physicsImage && (strcmp(name, "UnityEngine.PhysicsModule") == 0 || strcmp(name, "UnityEngine.PhysicsModule.dll") == 0)) physicsImage = img;
     }
 
-    if (!coreImage) {
-        Log("ERROR: UnityEngine.CoreModule image not found!");
-        return false;
-    }
+    if (!coreImage) { Log("ERROR: UnityEngine.CoreModule image not found!"); return false; }
     Log("Unity Core Module image resolved.");
 
-    // 3. Resolve classes from images
     gameObjectClass = il2cpp_class_from_name_fn(coreImage, "UnityEngine", "GameObject");
-    transformClass = il2cpp_class_from_name_fn(coreImage, "UnityEngine", "Transform");
-    if (physicsImage) {
-        rbClass = il2cpp_class_from_name_fn(physicsImage, "UnityEngine", "Rigidbody");
-    }
-    if (physics2DImage) {
-        rb2DClass = il2cpp_class_from_name_fn(physics2DImage, "UnityEngine", "Rigidbody2D");
-    }
+    transformClass  = il2cpp_class_from_name_fn(coreImage, "UnityEngine", "Transform");
+    if (physicsImage) rbClass = il2cpp_class_from_name_fn(physicsImage, "UnityEngine", "Rigidbody");
 
-    if (!gameObjectClass || !transformClass) {
-        Log("ERROR: Failed to resolve core GameObject/Transform classes from metadata.");
-        return false;
-    }
+    if (!gameObjectClass || !transformClass) { Log("ERROR: Failed to resolve core classes."); return false; }
 
-    // 4. Resolve GameObject methods via metadata
-    GameObject_Find_Method = FindMethod(gameObjectClass, "Find", 1);
-    GameObject_FindWithTag_Method = FindMethod(gameObjectClass, "FindWithTag", 1);
+    GameObject_Find_Method          = FindMethod(gameObjectClass, "Find", 1);
+    GameObject_FindWithTag_Method   = FindMethod(gameObjectClass, "FindWithTag", 1);
     GameObject_get_transform_Method = FindMethod(gameObjectClass, "get_transform", 0);
-    GameObject_GetComponent_Method = FindMethod(gameObjectClass, "GetComponent", 1, "Type");
+    GameObject_GetComponent_Method  = FindMethod(gameObjectClass, "GetComponent", 1, "Type");
 
     if (!GameObject_Find_Method || !GameObject_get_transform_Method || !GameObject_GetComponent_Method) {
-        Log("ERROR: Failed to resolve critical GameObject/Component methods from metadata.");
-        return false;
+        Log("ERROR: Failed to resolve critical GameObject methods."); return false;
     }
-    Log("All GameObject/Transform metadata methods resolved successfully.");
+    Log("GameObject/Transform methods resolved.");
 
-    // 5. Resolve Rigidbody / Rigidbody2D velocity methods from metadata
     if (rbClass) {
-        Rigidbody_set_velocity_Method = FindMethod(rbClass, "set_velocity", 1);
+        Rigidbody_set_velocity_Method        = FindMethod(rbClass, "set_velocity", 1);
         Rigidbody_set_angularVelocity_Method = FindMethod(rbClass, "set_angularVelocity", 1);
-        Log("Rigidbody 3D methods: " + std::string(Rigidbody_set_velocity_Method ? "Velocity OK. " : "Velocity FAILED. ") +
-                                     std::string(Rigidbody_set_angularVelocity_Method ? "Angular OK." : "Angular FAILED."));
-    }
-
-    if (rb2DClass) {
-        Rigidbody2D_set_velocity_Method = FindMethod(rb2DClass, "set_velocity", 1);
-        Rigidbody2D_set_angularVelocity_Method = FindMethod(rb2DClass, "set_angularVelocity", 1);
-        Log("Rigidbody 2D methods: " + std::string(Rigidbody2D_set_velocity_Method ? "Velocity OK. " : "Velocity FAILED. ") +
-                                     std::string(Rigidbody2D_set_angularVelocity_Method ? "Angular OK." : "Angular FAILED."));
+        Log("Rigidbody 3D: " + std::string(Rigidbody_set_velocity_Method ? "OK" : "FAILED"));
     }
 
     Log("[+] SUCCESS: All engine interfaces initialized perfectly!");
     return true;
 }
 
-// Attempts to find the player GameObject by trying several typical names/tags
-void* FindPlayer() {
-    void* playerGo = nullptr;
-
-    // 1. Try FindWithTag("Player")
-    if (GameObject_FindWithTag_Method) {
-        Log("Searching player via FindWithTag('Player')...");
-        void* tagStr = il2cpp_string_new_fn("Player");
-        void* params[] = { tagStr };
-        playerGo = InvokeMethod(GameObject_FindWithTag_Method, nullptr, params);
-        if (playerGo) {
-            Log("Player found via FindWithTag('Player').");
-            return playerGo;
-        }
+// Find the game window by title
+HWND FindGameWindow() {
+    const char* gameWindowNames[] = { 
+        "Flipping is Hard Demo",
+        "Flipping is Hard",
+        "Unity"
+    };
+    
+    for (const char* name : gameWindowNames) {
+        HWND hwnd = FindWindowA(nullptr, name);
+        if (hwnd) return hwnd;
     }
-
-    // 2. Try common GameObject names
-    if (GameObject_Find_Method) {
-        const char* commonNames[] = { "Flippy", "Player", "Phone", "PlayerPhone", "RetroPhone", "CellPhone", "Nokia", "BrickPhone" };
-        for (const char* name : commonNames) {
-            Log("Searching player via Find('" + std::string(name) + "')...");
-            void* nameStr = il2cpp_string_new_fn(name);
-            void* params[] = { nameStr };
-            playerGo = InvokeMethod(GameObject_Find_Method, nullptr, params);
-            if (playerGo) {
-                Log("Player found via Find('" + std::string(name) + "').");
-                return playerGo;
-            }
-        }
-    }
-
-    Log("Player not found in this frame.");
     return nullptr;
 }
 
-// Reset physics velocity of the player (supporting both 3D and 2D)
-void ResetVelocity(void* playerGo) {
-    if (!GameObject_GetComponent_Method) return;
-
-    // --- Try 3D Rigidbody ---
-    if (rbClass) {
-        void* rbType = il2cpp_type_get_object_fn(il2cpp_class_get_type_fn(rbClass));
-        void* params[] = { rbType };
-        void* rb = InvokeMethod(GameObject_GetComponent_Method, playerGo, params);
-        if (rb) {
-            Vector3 zero3D = { 0.0f, 0.0f, 0.0f };
-            void* velParams[] = { &zero3D };
-            if (Rigidbody_set_velocity_Method) {
-                InvokeMethod(Rigidbody_set_velocity_Method, rb, velParams);
-            }
-            if (Rigidbody_set_angularVelocity_Method) {
-                InvokeMethod(Rigidbody_set_angularVelocity_Method, rb, velParams);
-            }
-            return;
+void* FindPlayer() {
+    if (GameObject_FindWithTag_Method) {
+        void* s = il2cpp_string_new_fn("Player");
+        void* p[] = { s };
+        void* r = InvokeMethod(GameObject_FindWithTag_Method, nullptr, p);
+        if (r) return r;
+    }
+    if (GameObject_Find_Method) {
+        const char* names[] = { "Flippy", "Player", "Phone", "PlayerPhone", "RetroPhone", "CellPhone", "Nokia", "BrickPhone" };
+        for (const char* name : names) {
+            void* s = il2cpp_string_new_fn(name);
+            void* p[] = { s };
+            void* r = InvokeMethod(GameObject_Find_Method, nullptr, p);
+            if (r) return r;
         }
     }
-
-    // --- Try 2D Rigidbody ---
-    if (rb2DClass) {
-        void* rb2DType = il2cpp_type_get_object_fn(il2cpp_class_get_type_fn(rb2DClass));
-        void* params[] = { rb2DType };
-        void* rb2d = InvokeMethod(GameObject_GetComponent_Method, playerGo, params);
-        if (rb2d) {
-            Vector2 zero2D = { 0.0f, 0.0f };
-            void* velParams[] = { &zero2D };
-            if (Rigidbody2D_set_velocity_Method) {
-                InvokeMethod(Rigidbody2D_set_velocity_Method, rb2d, velParams);
-            }
-            
-            float zeroFloat = 0.0f;
-            void* angParams[] = { &zeroFloat };
-            if (Rigidbody2D_set_angularVelocity_Method) {
-                InvokeMethod(Rigidbody2D_set_angularVelocity_Method, rb2d, angParams);
-            }
-            return;
-        }
-    }
+    return nullptr;
 }
 
-// Helper: Convert quaternion to forward and right vectors
-void QuaternionToDirections(const Quaternion& q, Vector3& forward, Vector3& right) {
-    // Calculate forward vector (0, 0, 1 rotated by quaternion)
-    forward.x = 2.0f * (q.x * q.z + q.w * q.y);
-    forward.y = 2.0f * (q.y * q.z - q.w * q.x);
-    forward.z = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
-
-    // Calculate right vector (1, 0, 0 rotated by quaternion)
-    right.x = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
-    right.y = 2.0f * (q.x * q.y + q.w * q.z);
-    right.z = 2.0f * (q.x * q.z - q.w * q.y);
+void ResetVelocity(void* playerGo) {
+    if (!playerGo || !GameObject_GetComponent_Method || !rbClass) return;
+    void* rbType = il2cpp_type_get_object_fn(il2cpp_class_get_type_fn(rbClass));
+    void* params[] = { rbType };
+    void* rb = InvokeMethod(GameObject_GetComponent_Method, playerGo, params);
+    if (!rb) return;
+    Vector3 zero = { 0.0f, 0.0f, 0.0f };
+    void* vp[] = { &zero };
+    if (Rigidbody_set_velocity_Method)        InvokeMethod(Rigidbody_set_velocity_Method, rb, vp);
+    if (Rigidbody_set_angularVelocity_Method) InvokeMethod(Rigidbody_set_angularVelocity_Method, rb, vp);
 }
 
 // Fly mode movement handler - Find camera aggressively
 void* FindCamera() {
-    // Try 1: Camera.main
-    if (Camera_get_main_Method) {
-        void* cam = InvokeMethod(Camera_get_main_Method, nullptr, nullptr);
-        if (cam) return cam;
-    }
+    // NOTE: Camera.main returns a Camera component, NOT a GameObject.
+    // We need a GameObject, so we only use FindWithTag and Find here.
     
-    // Try 2: FindWithTag("MainCamera")
+    // Try 1: FindWithTag("MainCamera") - returns GameObject
     if (GameObject_FindWithTag_Method) {
         void* tagStr = il2cpp_string_new_fn("MainCamera");
         void* params[] = { tagStr };
@@ -654,7 +580,7 @@ void* FindCamera() {
         if (cam) return cam;
     }
     
-    // Try 3: Find by common camera names
+    // Try 2: Find by common camera names - returns GameObject
     if (GameObject_Find_Method) {
         const char* cameraNames[] = { "Main Camera", "Camera", "PlayerCamera", "ThirdPersonCamera", "FollowCamera", "CinemachineCamera" };
         for (const char* name : cameraNames) {
@@ -730,55 +656,42 @@ void HandleFlyMode(void* playerGo, void* cameraGo, float deltaTime) {
 
     // Check if Shift is held for speed boost
     bool isShiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-    
-    // Clamp deltaTime to avoid huge jumps
-    if (deltaTime > 0.1f) deltaTime = 0.1f;
-    if (deltaTime < 0.001f) deltaTime = 0.016f;
-    
-    float speed = g_flySpeed * deltaTime;
-    if (isShiftDown) {
-        speed *= g_flySpeedBoost;
-    }
 
-    // Calculate movement delta based on input
+    // Read inputs
+    bool wDown   = (GetAsyncKeyState('W')        & 0x8000) != 0;
+    bool sDown   = (GetAsyncKeyState('S')        & 0x8000) != 0;
+    bool aDown   = (GetAsyncKeyState('A')        & 0x8000) != 0;
+    bool dDown   = (GetAsyncKeyState('D')        & 0x8000) != 0;
+    bool upDown  = (GetAsyncKeyState(VK_SPACE)   & 0x8000) != 0;
+    bool dnDown  = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+    bool anyMove = wDown || sDown || aDown || dDown || upDown || dnDown;
+
+    // Calculate speed based on deltaTime (smooth movement)
+    float speed = g_flySpeed;
+    if (isShiftDown) speed *= g_flySpeedBoost;
+    speed *= deltaTime;  // Scale by actual frame time
+
+    // Calculate movement delta
     Vector3 movement = { 0.0f, 0.0f, 0.0f };
-
-    // WASD movement relative to camera orientation (horizontal plane only)
-    if (GetAsyncKeyState('W') & 0x8000) {
-        movement.x += forward.x * speed;
-        movement.z += forward.z * speed;
-    }
-    if (GetAsyncKeyState('S') & 0x8000) {
-        movement.x -= forward.x * speed;
-        movement.z -= forward.z * speed;
-    }
-    if (GetAsyncKeyState('A') & 0x8000) {
-        movement.x -= right.x * speed;
-        movement.z -= right.z * speed;
-    }
-    if (GetAsyncKeyState('D') & 0x8000) {
-        movement.x += right.x * speed;
-        movement.z += right.z * speed;
-    }
-
-    // Vertical movement (always world-space up/down)
-    if (GetAsyncKeyState(VK_SPACE) & 0x8000) movement.y += speed;
-    if (GetAsyncKeyState(VK_CONTROL) & 0x8000) movement.y -= speed;
+    if (wDown)  { movement.x += forward.x * speed; movement.z += forward.z * speed; }
+    if (sDown)  { movement.x -= forward.x * speed; movement.z -= forward.z * speed; }
+    if (aDown)  { movement.x -= right.x   * speed; movement.z -= right.z   * speed; }
+    if (dDown)  { movement.x += right.x   * speed; movement.z += right.z   * speed; }
+    if (upDown) { movement.y += speed; }
+    if (dnDown) { movement.y -= speed; }
 
     // Apply movement
-    Vector3 newPos = {
-        currentPos.x + movement.x,
-        currentPos.y + movement.y,
-        currentPos.z + movement.z
-    };
-    Transform_set_position_fn(nativeTransform, &newPos);
-    
-    // Reset velocity only if there is NO movement input (prevents falling while stationary)
-    // This makes the movement smoother while keys are pressed
-    bool isMoving = (movement.x != 0.0f || movement.y != 0.0f || movement.z != 0.0f);
-    if (!isMoving) {
-        ResetVelocity(playerGo);
+    if (anyMove) {
+        Vector3 newPos = {
+            currentPos.x + movement.x,
+            currentPos.y + movement.y,
+            currentPos.z + movement.z
+        };
+        Transform_set_position_fn(nativeTransform, &newPos);
     }
+
+    // Reset velocity always to prevent gravity pulling player down
+    ResetVelocity(playerGo);
 }
 
 DWORD WINAPI TrainerThread(LPVOID lpParam) {
@@ -822,6 +735,16 @@ DWORD WINAPI TrainerThread(LPVOID lpParam) {
     Log("    [F]         -> Toggle Fly Mode");
     Log("=========================================");
 
+    // Capture the game window handle by searching for the correct window title
+    g_gameWindowHwnd = FindGameWindow();
+    if (g_gameWindowHwnd) {
+        char windowTitle[256];
+        GetWindowTextA(g_gameWindowHwnd, windowTitle, sizeof(windowTitle));
+        Log(std::string("Game window captured: ") + windowTitle);
+    } else {
+        Log("WARNING: Could not find game window. Overlay will show on all windows.");
+    }
+
     // Launch overlay HUD thread
     CreateThread(nullptr, 0, OverlayThread, nullptr, 0, nullptr);
 
@@ -832,6 +755,12 @@ DWORD WINAPI TrainerThread(LPVOID lpParam) {
     LARGE_INTEGER frequency, lastTime, currentTime;
     QueryPerformanceFrequency(&frequency);
     QueryPerformanceCounter(&lastTime);
+
+    // Cache for player and camera - persistent across frames
+    void* cachedPlayerGo = nullptr;
+    void* cachedCameraGo = nullptr;
+    int framesSincePlayerSearch = 0;
+    int framesSinceCameraSearch = 0;
 
     while (true) {
         // Calculate delta time
@@ -870,6 +799,8 @@ DWORD WINAPI TrainerThread(LPVOID lpParam) {
             g_flyModeActive = g_flyMode;
             if (g_flyMode) {
                 Log("Fly Mode ENABLED - Use WASD/Space/Ctrl to move");
+                // Reset camera search when entering fly mode
+                framesSinceCameraSearch = 999;
             } else {
                 Log("Fly Mode DISABLED");
             }
@@ -899,104 +830,74 @@ DWORD WINAPI TrainerThread(LPVOID lpParam) {
 
         // Handle fly mode movement
         if (g_flyMode) {
-            // Cache player and camera references to avoid searching every frame
-            static void* cachedPlayerGo = nullptr;
-            static void* cachedCameraGo = nullptr;
-            static int framesSinceLastSearch = 0;
-            
-            // Search for player and camera only every 120 frames (~2 seconds) or if cache is null
-            if (cachedPlayerGo == nullptr || framesSinceLastSearch++ > 120) {
+            // Search for player every frame (it's cached by FindPlayer internally)
+            if (cachedPlayerGo == nullptr || framesSincePlayerSearch++ > 60) {
                 cachedPlayerGo = FindPlayer();
+                framesSincePlayerSearch = 0;
+            }
+            
+            // Search for camera only every 30 frames to reduce overhead but keep it responsive
+            if (cachedCameraGo == nullptr || framesSinceCameraSearch++ > 30) {
                 cachedCameraGo = FindCamera();
-                framesSinceLastSearch = 0;
+                framesSinceCameraSearch = 0;
                 
-                if (cachedCameraGo) {
+                if (cachedCameraGo && framesSinceCameraSearch == 0) {
                     Log("Camera found for fly mode!");
-                } else {
-                    Log("WARNING: Camera not found! Fly mode will use world-space movement.");
                 }
             }
             
             if (cachedPlayerGo) {
                 HandleFlyMode(cachedPlayerGo, cachedCameraGo, deltaTime);
             }
+        } else {
+            // Reset caches when fly mode is off
+            cachedPlayerGo = nullptr;
+            cachedCameraGo = nullptr;
+            framesSincePlayerSearch = 0;
+            framesSinceCameraSearch = 0;
         }
 
-        // Edge detection for R key press (trigger once on down event)
         if (isRDown && !rPressedLast) {
             if (isShiftDown) {
-                // --- SAVE POSITION ---
-                Log("Shift + R detected. Saving position...");
                 void* playerGo = FindPlayer();
                 if (playerGo) {
-                    Log("Getting transform component...");
                     void* transform = InvokeMethod(GameObject_get_transform_Method, playerGo, nullptr);
                     if (transform) {
-                        void* nativeTransform = GetNativePointer(transform);
-                        if (nativeTransform) {
-                            Log("Calling Transform_get_position_fn with native pointer...");
-                            Transform_get_position_fn(nativeTransform, &g_savedPos);
-                            
-                            Log("Calling Transform_get_rotation_fn with native pointer...");
-                            if (Transform_get_rotation_fn) {
-                                Transform_get_rotation_fn(nativeTransform, &g_savedRot);
-                            }
+                        void* ntr = GetNativePointer(transform);
+                        if (ntr) {
+                            Transform_get_position_fn(ntr, &g_savedPos);
+                            if (Transform_get_rotation_fn) Transform_get_rotation_fn(ntr, &g_savedRot);
                             g_hasSavedPos = true;
                             g_hasSavedPosOverlay = true;
-                            
                             char buf[128];
-                            sprintf_s(buf, "Position saved! (X: %.2f, Y: %.2f, Z: %.2f)", g_savedPos.x, g_savedPos.y, g_savedPos.z);
+                            sprintf_s(buf, "Position saved! (%.2f, %.2f, %.2f)", g_savedPos.x, g_savedPos.y, g_savedPos.z);
                             Log(buf);
-                        } else {
-                            Log("WARNING: Native transform pointer is NULL!");
                         }
-                    } else {
-                        Log("WARNING: Found player GameObject, but it has no Transform!");
                     }
                 } else {
-                    Log("WARNING: Player GameObject not found! Cannot save position.");
-                    Log("Tip: Try to load into the gameplay first, then press Shift+R.");
+                    Log("WARNING: Player not found. Load into gameplay first.");
                 }
             } else {
-                // --- RESTORE POSITION ---
-                Log("R detected. Restoring position...");
                 if (g_hasSavedPos) {
                     void* playerGo = FindPlayer();
                     if (playerGo) {
-                        Log("Getting transform component...");
                         void* transform = InvokeMethod(GameObject_get_transform_Method, playerGo, nullptr);
                         if (transform) {
-                            void* nativeTransform = GetNativePointer(transform);
-                            if (nativeTransform) {
-                                Log("Calling Transform_set_position_fn with native pointer...");
-                                // Teleport position and rotation
-                                Transform_set_position_fn(nativeTransform, &g_savedPos);
-                                
-                                Log("Calling Transform_set_rotation_fn with native pointer...");
-                                if (Transform_set_rotation_fn) {
-                                    Transform_set_rotation_fn(nativeTransform, &g_savedRot);
-                                }
-
-                                Log("Resetting physics velocity...");
-                                // Reset physical velocity
+                            void* ntr = GetNativePointer(transform);
+                            if (ntr) {
+                                Transform_set_position_fn(ntr, &g_savedPos);
+                                if (Transform_set_rotation_fn) Transform_set_rotation_fn(ntr, &g_savedRot);
                                 ResetVelocity(playerGo);
-
                                 char buf[128];
-                                sprintf_s(buf, "Teleported to saved position! (X: %.2f, Y: %.2f, Z: %.2f)", g_savedPos.x, g_savedPos.y, g_savedPos.z);
+                                sprintf_s(buf, "Teleported! (%.2f, %.2f, %.2f)", g_savedPos.x, g_savedPos.y, g_savedPos.z);
                                 Log(buf);
-                                
-
-                            } else {
-                                Log("WARNING: Native transform pointer is NULL!");
                             }
-                        } else {
-                            Log("WARNING: Found player GameObject, but it has no Transform!");
                         }
                     } else {
-                        Log("WARNING: Player GameObject not found! Cannot teleport.");
+                        Log("WARNING: Player not found.");
                     }
                 } else {
-                    Log("WARNING: No position saved yet! Press Shift + R to save your position first.");
+                    Log("WARNING: No position saved yet. Press Shift+R first.");
                 }
             }
         }

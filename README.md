@@ -1,18 +1,22 @@
 # Flipping is Hard - Practice Trainer
 
-A Unity IL2CPP trainer for "Flipping is Hard Demo" that enables position saving/restoring for speedrun practice. Perfect for mastering difficult sections without restarting.
+A Unity IL2CPP trainer for "Flipping is Hard Demo" that enables position saving/restoring and smooth fly mode for speedrun practice. Perfect for mastering difficult sections without restarting.
 
 ![Trainer Overlay](https://img.shields.io/badge/Status-Working-brightgreen) ![Platform](https://img.shields.io/badge/Platform-Windows-blue) ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## ✨ Features
 - **📌 Position Save/Restore** - Save any position with `Shift+R`, teleport back with `R`
-- **✈️ Fly Mode** - Toggle free-camera flight with `F` key
+- **✈️ Smooth Fly Mode** - Toggle free-camera flight with `F` key
   - Camera-relative movement with WASD (follows where you look)
   - Vertical movement with Space/Ctrl
   - Speed boost with Shift (3x faster)
-  - No gravity - stay in the air
-- **📍 Real-time Coordinates** - Functional HUD in the top-right corner showing current `HEIGHT` and `XYZ` position.
-- **🎮 On-Screen Overlay** - Real-time HUD showing controls, fly mode status, and saved position.
+  - No gravity - stay in the air indefinitely
+  - Smooth, jitter-free movement
+- **📍 Real-time Coordinates** - Functional HUD in the top-right corner showing current `HEIGHT` and `XYZ` position
+- **🎮 Smart Overlay** - Real-time HUD showing controls, fly mode status, and saved position
+  - **Only visible when game is in focus** - Automatically hides when you tab out
+  - Bottom-left corner for controls
+  - Top-right corner for coordinates
 
 ## 🚀 Quick Start
 
@@ -41,7 +45,7 @@ The injector automatically finds the game process and loads the trainer.
   - `Space` → Move up (world space)
   - `Ctrl` → Move down (world space)
   - **`Shift` (hold)** → Speed boost (3x faster)
-- **`F8`** → Stop logs (not visible in HUD)
+- **`F8`** → Toggle logging (console only)
 - **`END`** → Unload trainer
 
 ## 📁 Project Structure
@@ -53,6 +57,7 @@ Trainer/
 ├── README.md            # This file
 └── .gitignore           # Excludes compiled binaries
 ```
+
 ## 📋 Requirements
 - **Windows 10/11** (x64)
 - **Visual Studio 2022** (or any C++17 compiler)
@@ -84,7 +89,8 @@ The overlay appears in the bottom-left corner and top-right:
 ## ⚠️ Notes & Limitations
 - **Game Must Be Running** - Injector requires the game process to be active
 - **Source Code** - 100% open source, no obfuscation
-- **END** - Unload the trainer will close the game
+- **Overlay** - Only visible when the game window is in focus
+- **END Key** - Unloading the trainer will close the game
 
 ## 🔧 Building from Source
 1. Install Visual Studio 2022 with C++ development tools
@@ -104,7 +110,7 @@ Free for personal, educational, and non-commercial use.
 
 ## 🙏 Credits
 - **Game**: "Flipping is Hard" by [Elegant Horse Studios]
-- **Development**: Assisted by AI (because I don't know how to code 😅)
+- **Development**: Assisted by AI
 - **Testing**: Community feedback welcome!
 
 ---
