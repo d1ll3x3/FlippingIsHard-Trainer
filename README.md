@@ -11,11 +11,7 @@ A Unity IL2CPP trainer for "Flipping is Hard Demo" that enables position saving/
   - Vertical movement with Space/Ctrl
   - Speed boost with Shift (3x faster)
   - No gravity - stay in the air
-- **🔄 Physics Reset** - Automatically zeroes velocity when teleporting (supports both 3D & 2D physics)
 - **🎮 On-Screen Overlay** - Real-time HUD showing controls, fly mode status, and saved position
-- **🔧 No Sound Effects** - Visual feedback only, no annoying beeps
-- **🎯 Works with IL2CPP** - Uses Unity's IL2CPP runtime for maximum compatibility
-- **⚡ Fast & Lightweight** - Minimal performance impact on the game
 
 ## 🚀 Quick Start
 
@@ -55,27 +51,6 @@ Trainer/
 ├── README.md            # This file
 └── .gitignore           # Excludes compiled binaries
 ```
-
-## 🛠️ Technical Details
-
-### How It Works
-1. **IL2CPP Resolution** - Hooks into `GameAssembly.dll` to resolve Unity engine functions
-2. **Player Detection** - Searches for player GameObject via tags (`"Player"`) and common names
-3. **Camera Detection** - Finds main camera via `Camera.main`, tags, and common names for fly mode
-4. **Direct Transform Access** - Uses Unity's internal `Transform::get_position_Injected`/`set_position_Injected` icalls
-5. **Physics Integration** - Detects and resets both `Rigidbody` and `Rigidbody2D` velocity
-6. **Fly Mode System** - Camera-relative movement with delta-time smoothing and physics override
-7. **Overlay System** - Creates a transparent always-on-top window with GDI+ rendering
-
-### Key Components
-- **Fly Mode Handler** - Camera-relative movement system with WASD controls following camera direction
-- **Camera Finder** - Aggressive camera detection via multiple methods (Camera.main, tags, names)
-- **Overlay Thread** - Separate thread for HUD rendering (350×180px, bottom-left corner)
-- **Thread-Safe Logging** - Console output with file logging to `trainer_log.txt`
-- **Smart Caching** - Player and camera references cached to minimize performance impact
-- **Error Handling** - Graceful failure if game isn't ready or player not found
-- **Clean Unload** - Proper cleanup on `END` key press
-
 ## 📋 Requirements
 - **Windows 10/11** (x64)
 - **Visual Studio 2022** (or any C++17 compiler)
@@ -98,11 +73,6 @@ The overlay appears in the bottom-left corner with:
 
 ## ⚠️ Notes & Limitations
 - **Game Must Be Running** - Injector requires the game process to be active
-- **Player GameObject Required** - Only works in scenes with a player object
-- **Camera Detection** - Fly mode works best when main camera is found (searches via Camera.main, tags, and names)
-- **Third-Person Games** - Fly mode is optimized for 3rd person camera movement
-- **Demo Version** - Tested with "Flipping is Hard Demo" (may work with full version)
-- **Anti-Cheat** - This is for single-player practice only
 - **Source Code** - 100% open source, no obfuscation
 
 ## 🔧 Building from Source
