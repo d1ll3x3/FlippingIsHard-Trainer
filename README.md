@@ -41,6 +41,7 @@ The injector automatically finds the game process and loads the trainer.
   - `Space` → Move up (world space)
   - `Ctrl` → Move down (world space)
   - **`Shift` (hold)** → Speed boost (3x faster)
+- **`F8`** → Stop logs (not visible in HUD)
 - **`END`** → Unload trainer
 
 ## 📁 Project Structure
