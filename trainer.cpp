@@ -279,7 +279,7 @@ std::mutex g_logMutex;
 void Log(const std::string& msg) {
     std::lock_guard<std::mutex> lock(g_logMutex);
     std::cout << "[Trainer] " << msg << std::endl;
-    std::ofstream logFile("C:\\Users\\Dani\\Desktop\\Trainer\\trainer_log.txt", std::ios_base::app);
+    std::ofstream logFile("trainer_log.txt", std::ios_base::app);
     if (logFile.is_open()) {
         logFile << "[Trainer] " << msg << "\n";
         logFile.close();
@@ -703,7 +703,7 @@ void HandleFlyMode(void* playerGo, void* cameraGo, float deltaTime) {
 DWORD WINAPI TrainerThread(LPVOID lpParam) {
     // Truncate log file
     {
-        std::ofstream logFile("C:\\Users\\Dani\\Desktop\\Trainer\\trainer_log.txt", std::ios_base::trunc);
+        std::ofstream logFile("trainer_log.txt", std::ios_base::trunc);
         if (logFile.is_open()) {
             logFile << "=== Trainer Log Start ===\n";
             logFile.close();
