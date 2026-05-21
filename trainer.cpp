@@ -5,11 +5,13 @@
 #include <fstream>
 #include <mutex>
 #include <atomic>
+#include <cmath>
 
 // ---- Overlay HUD state ----
 std::atomic<bool> g_overlayRunning(false);
 HWND             g_overlayHwnd = nullptr;
 std::atomic<bool> g_hasSavedPosOverlay(false); // mirrors g_hasSavedPos for the overlay thread
+std::atomic<bool> g_flyModeActive(false);      // fly mode state for overlay
 
 // Structs for Unity types
 struct Vector3 {
@@ -85,11 +87,14 @@ void* gameObjectClass = nullptr;
 void* transformClass = nullptr;
 void* rbClass = nullptr;
 void* rb2DClass = nullptr;
+void* cameraClass = nullptr;
 
 void* GameObject_Find_Method = nullptr;
 void* GameObject_FindWithTag_Method = nullptr;
 void* GameObject_get_transform_Method = nullptr;
 void* GameObject_GetComponent_Method = nullptr;
+
+void* Camera_get_main_Method = nullptr;
 
 void* Rigidbody_set_velocity_Method = nullptr;
 void* Rigidbody_set_angularVelocity_Method = nullptr;
@@ -101,6 +106,9 @@ void* Rigidbody2D_set_angularVelocity_Method = nullptr;
 bool g_hasSavedPos = false;
 Vector3 g_savedPos = { 0.0f, 0.0f, 0.0f };
 Quaternion g_savedRot = { 0.0f, 0.0f, 0.0f, 1.0f };
+bool g_flyMode = false;
+float g_flySpeed = 15.0f; // units per second (increased from 5.0)
+float g_flySpeedBoost = 3.0f; // multiplier when holding Shift
 
 // ---- Overlay rendering ----
 static void PaintOverlay(HWND hwnd) {
@@ -121,15 +129,33 @@ static void PaintOverlay(HWND hwnd) {
 
     SetBkMode(hdc, TRANSPARENT);
 
+    int yPos = 8;
+
     // Header
     SetTextColor(hdc, RGB(255, 220, 0)); // gold
     const char* header = "[Trainer]";
-    TextOutA(hdc, 10, 8, header, (int)strlen(header));
+    TextOutA(hdc, 10, yPos, header, (int)strlen(header));
+    yPos += 26;
+
+    // Fly mode status (if active, show prominently)
+    if (g_flyModeActive.load()) {
+        SetTextColor(hdc, RGB(255, 100, 255)); // bright magenta
+        const char* flyStatus = "[FLY MODE ACTIVE]";
+        TextOutA(hdc, 10, yPos, flyStatus, (int)strlen(flyStatus));
+        yPos += 24;
+        
+        // Fly controls
+        SetTextColor(hdc, RGB(200, 200, 200)); // light grey
+        const char* flyControls = "WASD/Space/Ctrl + Shift=Turbo";
+        TextOutA(hdc, 10, yPos, flyControls, (int)strlen(flyControls));
+        yPos += 24;
+    }
 
     // Shortcut 1 – always shown
     SetTextColor(hdc, RGB(100, 220, 255)); // light blue
     const char* line1 = "Shift+R  ->  Save position";
-    TextOutA(hdc, 10, 34, line1, (int)strlen(line1));
+    TextOutA(hdc, 10, yPos, line1, (int)strlen(line1));
+    yPos += 24;
 
     // Shortcut 2 – green when position is saved, grey otherwise
     if (g_hasSavedPosOverlay.load()) {
@@ -138,13 +164,20 @@ static void PaintOverlay(HWND hwnd) {
         SetTextColor(hdc, RGB(150, 150, 150)); // grey (not saved yet)
     }
     const char* line2 = "R        ->  Teleport";
-    TextOutA(hdc, 10, 58, line2, (int)strlen(line2));
+    TextOutA(hdc, 10, yPos, line2, (int)strlen(line2));
+    yPos += 24;
 
-    // Hint when no position saved
-    if (!g_hasSavedPosOverlay.load()) {
+    // Fly mode toggle
+    SetTextColor(hdc, RGB(255, 180, 100)); // orange
+    const char* line3 = "F        ->  Toggle Fly Mode";
+    TextOutA(hdc, 10, yPos, line3, (int)strlen(line3));
+    yPos += 24;
+
+    // Hint when no position saved (only if fly mode not active)
+    if (!g_hasSavedPosOverlay.load() && !g_flyModeActive.load()) {
         SetTextColor(hdc, RGB(200, 80, 80)); // red hint
         const char* hint = "(Save first with Shift+R)";
-        TextOutA(hdc, 10, 82, hint, (int)strlen(hint));
+        TextOutA(hdc, 10, yPos, hint, (int)strlen(hint));
     }
 
     SelectObject(hdc, hOldFont);
@@ -171,8 +204,8 @@ DWORD WINAPI OverlayThread(LPVOID) {
     wc.lpszClassName = CLASS_NAME;
     RegisterClassExA(&wc);
 
-    // Window size to fit the text block
-    int W = 330, H = 110;
+    // Window size to fit the text block (increased for fly mode display)
+    int W = 350, H = 180;
 
     HWND hwnd = CreateWindowExA(
         WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
@@ -483,6 +516,158 @@ void ResetVelocity(void* playerGo) {
     }
 }
 
+// Helper: Convert quaternion to forward and right vectors
+void QuaternionToDirections(const Quaternion& q, Vector3& forward, Vector3& right) {
+    // Calculate forward vector (0, 0, 1 rotated by quaternion)
+    forward.x = 2.0f * (q.x * q.z + q.w * q.y);
+    forward.y = 2.0f * (q.y * q.z - q.w * q.x);
+    forward.z = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+
+    // Calculate right vector (1, 0, 0 rotated by quaternion)
+    right.x = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+    right.y = 2.0f * (q.x * q.y + q.w * q.z);
+    right.z = 2.0f * (q.x * q.z - q.w * q.y);
+}
+
+// Fly mode movement handler - Find camera aggressively
+void* FindCamera() {
+    // Try 1: Camera.main
+    if (Camera_get_main_Method) {
+        void* cam = InvokeMethod(Camera_get_main_Method, nullptr, nullptr);
+        if (cam) return cam;
+    }
+    
+    // Try 2: FindWithTag("MainCamera")
+    if (GameObject_FindWithTag_Method) {
+        void* tagStr = il2cpp_string_new_fn("MainCamera");
+        void* params[] = { tagStr };
+        void* cam = InvokeMethod(GameObject_FindWithTag_Method, nullptr, params);
+        if (cam) return cam;
+    }
+    
+    // Try 3: Find by common camera names
+    if (GameObject_Find_Method) {
+        const char* cameraNames[] = { "Main Camera", "Camera", "PlayerCamera", "ThirdPersonCamera", "FollowCamera", "CinemachineCamera" };
+        for (const char* name : cameraNames) {
+            void* nameStr = il2cpp_string_new_fn(name);
+            void* params[] = { nameStr };
+            void* cam = InvokeMethod(GameObject_Find_Method, nullptr, params);
+            if (cam) return cam;
+        }
+    }
+    
+    return nullptr;
+}
+
+// Normalize a vector
+void NormalizeVector(Vector3& v) {
+    float length = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (length > 0.0001f) {
+        v.x /= length;
+        v.y /= length;
+        v.z /= length;
+    }
+}
+
+// Convert quaternion to forward/right vectors (horizontal plane only for WASD)
+void QuaternionToVectors(const Quaternion& q, Vector3& forward, Vector3& right) {
+    // Forward vector (0, 0, 1) rotated by quaternion
+    forward.x = 2.0f * (q.x * q.z + q.w * q.y);
+    forward.y = 2.0f * (q.y * q.z - q.w * q.x);
+    forward.z = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+
+    // Project forward onto horizontal plane (ignore Y component for WASD)
+    forward.y = 0.0f;
+    NormalizeVector(forward);
+
+    // Right vector (1, 0, 0) rotated by quaternion
+    right.x = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+    right.y = 2.0f * (q.x * q.y + q.w * q.z);
+    right.z = 2.0f * (q.x * q.z - q.w * q.y);
+
+    // Project right onto horizontal plane
+    right.y = 0.0f;
+    NormalizeVector(right);
+}
+
+void HandleFlyMode(void* playerGo, void* cameraGo, float deltaTime) {
+    if (!playerGo || !GameObject_get_transform_Method) return;
+
+    void* transform = InvokeMethod(GameObject_get_transform_Method, playerGo, nullptr);
+    if (!transform) return;
+
+    void* nativeTransform = GetNativePointer(transform);
+    if (!nativeTransform) return;
+
+    // Get current position
+    Vector3 currentPos;
+    Transform_get_position_fn(nativeTransform, &currentPos);
+
+    // Get camera rotation
+    Quaternion cameraRot = { 0.0f, 0.0f, 0.0f, 1.0f };
+    if (cameraGo) {
+        void* cameraTransform = InvokeMethod(GameObject_get_transform_Method, cameraGo, nullptr);
+        if (cameraTransform) {
+            void* nativeCameraTransform = GetNativePointer(cameraTransform);
+            if (nativeCameraTransform && Transform_get_rotation_fn) {
+                Transform_get_rotation_fn(nativeCameraTransform, &cameraRot);
+            }
+        }
+    }
+
+    // Get forward and right vectors from camera rotation (projected to horizontal plane)
+    Vector3 forward, right;
+    QuaternionToVectors(cameraRot, forward, right);
+
+    // Check if Shift is held for speed boost
+    bool isShiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    
+    // Clamp deltaTime to avoid huge jumps
+    if (deltaTime > 0.1f) deltaTime = 0.1f;
+    if (deltaTime < 0.001f) deltaTime = 0.016f;
+    
+    float speed = g_flySpeed * deltaTime;
+    if (isShiftDown) {
+        speed *= g_flySpeedBoost;
+    }
+
+    // Calculate movement delta based on input
+    Vector3 movement = { 0.0f, 0.0f, 0.0f };
+
+    // WASD movement relative to camera orientation (horizontal plane only)
+    if (GetAsyncKeyState('W') & 0x8000) {
+        movement.x += forward.x * speed;
+        movement.z += forward.z * speed;
+    }
+    if (GetAsyncKeyState('S') & 0x8000) {
+        movement.x -= forward.x * speed;
+        movement.z -= forward.z * speed;
+    }
+    if (GetAsyncKeyState('A') & 0x8000) {
+        movement.x -= right.x * speed;
+        movement.z -= right.z * speed;
+    }
+    if (GetAsyncKeyState('D') & 0x8000) {
+        movement.x += right.x * speed;
+        movement.z += right.z * speed;
+    }
+
+    // Vertical movement (always world-space up/down)
+    if (GetAsyncKeyState(VK_SPACE) & 0x8000) movement.y += speed;
+    if (GetAsyncKeyState(VK_CONTROL) & 0x8000) movement.y -= speed;
+
+    // Apply movement
+    Vector3 newPos = {
+        currentPos.x + movement.x,
+        currentPos.y + movement.y,
+        currentPos.z + movement.z
+    };
+    Transform_set_position_fn(nativeTransform, &newPos);
+    
+    // ALWAYS keep velocity at zero while in fly mode (prevents falling)
+    ResetVelocity(playerGo);
+}
+
 DWORD WINAPI TrainerThread(LPVOID lpParam) {
     // Truncate log file
     {
@@ -521,24 +706,74 @@ DWORD WINAPI TrainerThread(LPVOID lpParam) {
     Log("[+] Mod active! Controls:");
     Log("    [Shift + R] -> Save position");
     Log("    [R]         -> Teleport to saved position");
+    Log("    [F]         -> Toggle Fly Mode");
     Log("=========================================");
 
     // Launch overlay HUD thread
     CreateThread(nullptr, 0, OverlayThread, nullptr, 0, nullptr);
 
     bool rPressedLast = false;
+    bool fPressedLast = false;
+    
+    // For delta time calculation
+    LARGE_INTEGER frequency, lastTime, currentTime;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&lastTime);
 
     while (true) {
+        // Calculate delta time
+        QueryPerformanceCounter(&currentTime);
+        float deltaTime = (float)(currentTime.QuadPart - lastTime.QuadPart) / (float)frequency.QuadPart;
+        lastTime = currentTime;
+
         // Sleep to avoid consuming 100% CPU
         Sleep(16); // ~60 Hz
 
         // Check keys
         bool isShiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
         bool isRDown = (GetAsyncKeyState('R') & 0x8000) != 0;
+        bool isFDown = (GetAsyncKeyState('F') & 0x8000) != 0;
 
         // Ensure we attach the IL2CPP runtime on each check frame to avoid thread collisions
         void* domain = il2cpp_domain_get_fn();
         il2cpp_thread_attach_fn(domain);
+
+        // Toggle fly mode with F key
+        if (isFDown && !fPressedLast) {
+            g_flyMode = !g_flyMode;
+            g_flyModeActive = g_flyMode;
+            if (g_flyMode) {
+                Log("Fly Mode ENABLED - Use WASD/Space/Ctrl to move");
+            } else {
+                Log("Fly Mode DISABLED");
+            }
+        }
+        fPressedLast = isFDown;
+
+        // Handle fly mode movement
+        if (g_flyMode) {
+            // Cache player and camera references to avoid searching every frame
+            static void* cachedPlayerGo = nullptr;
+            static void* cachedCameraGo = nullptr;
+            static int framesSinceLastSearch = 0;
+            
+            // Search for player and camera only every 120 frames (~2 seconds) or if cache is null
+            if (cachedPlayerGo == nullptr || framesSinceLastSearch++ > 120) {
+                cachedPlayerGo = FindPlayer();
+                cachedCameraGo = FindCamera();
+                framesSinceLastSearch = 0;
+                
+                if (cachedCameraGo) {
+                    Log("Camera found for fly mode!");
+                } else {
+                    Log("WARNING: Camera not found! Fly mode will use world-space movement.");
+                }
+            }
+            
+            if (cachedPlayerGo) {
+                HandleFlyMode(cachedPlayerGo, cachedCameraGo, deltaTime);
+            }
+        }
 
         // Edge detection for R key press (trigger once on down event)
         if (isRDown && !rPressedLast) {
