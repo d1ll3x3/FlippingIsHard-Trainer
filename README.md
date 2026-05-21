@@ -11,7 +11,8 @@ A Unity IL2CPP trainer for "Flipping is Hard Demo" that enables position saving/
   - Vertical movement with Space/Ctrl
   - Speed boost with Shift (3x faster)
   - No gravity - stay in the air
-- **🎮 On-Screen Overlay** - Real-time HUD showing controls, fly mode status, and saved position
+- **📍 Real-time Coordinates** - Functional HUD in the top-right corner showing current `HEIGHT` and `XYZ` position.
+- **🎮 On-Screen Overlay** - Real-time HUD showing controls, fly mode status, and saved position.
 
 ## 🚀 Quick Start
 
@@ -34,7 +35,6 @@ The injector automatically finds the game process and loads the trainer.
 - **`Shift + R`** → Save current position & rotation
 - **`R`** → Teleport to saved position (resets physics)
 - **`F`** → Toggle Fly Mode ON/OFF
-- **`F8`** → Enable/Disable File & Console Logging
 - **Fly Mode Controls:**
   - `W` / `S` → Move forward/backward (relative to camera)
   - `A` / `D` → Move left/right (relative to camera)
@@ -61,7 +61,9 @@ Trainer/
 ## 🎮 Overlay Preview
 ![HUD Preview](preview.jpg)
 
-The overlay appears in the bottom-left corner with:
+The overlay appears in the bottom-left corner and top-right:
+
+**Controls (Bottom-Left):**
 ```text
   FLIPPING IS HARD TRAINER
   » FLY MODE ACTIVE            (when fly mode is on)
@@ -69,8 +71,13 @@ The overlay appears in the bottom-left corner with:
   Shift+R   :  Save position
   R         :  Teleport (Ready)
   F         :  Toggle Fly Mode
-  F8        :  Toggle Logs ON/OFF
   END       :  Unload Trainer
+```
+
+**Coordinates (Top-Right):**
+```text
+  HEIGHT: 3.5 M
+  XYZ: 0.7, 3.5, 1.2
 ```
 
 ## ⚠️ Notes & Limitations

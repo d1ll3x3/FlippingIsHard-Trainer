@@ -10,8 +10,14 @@
 // ---- Overlay HUD state ----
 std::atomic<bool> g_overlayRunning(false);
 HWND             g_overlayHwnd = nullptr;
+HWND             g_posOverlayHwnd = nullptr;
 std::atomic<bool> g_hasSavedPosOverlay(false); // mirrors g_hasSavedPos for the overlay thread
 std::atomic<bool> g_flyModeActive(false);      // fly mode state for overlay
+
+// Current player position for HUD
+std::atomic<float> g_currX(0.0f);
+std::atomic<float> g_currY(0.0f);
+std::atomic<float> g_currZ(0.0f);
 
 // Structs for Unity types
 struct Vector3 {
@@ -194,16 +200,10 @@ static void PaintOverlay(HWND hwnd) {
     }
     yPos += 24;
 
-    // Fly mode toggle
+    // Toggle Fly Mode
     SetTextColor(hdc, RGB(255, 180, 100)); // orange
     const char* line3 = "  F         :  Toggle Fly Mode";
     TextOutA(hdc, 10, yPos, line3, (int)strlen(line3));
-    yPos += 24;
-
-    // Toggle logs
-    SetTextColor(hdc, RGB(180, 180, 180)); // grey
-    const char* line4 = "  F8        :  Toggle Logs ON/OFF";
-    TextOutA(hdc, 10, yPos, line4, (int)strlen(line4));
     yPos += 24;
 
     // END to unload
@@ -217,9 +217,55 @@ static void PaintOverlay(HWND hwnd) {
     EndPaint(hwnd, &ps);
 }
 
+static void PaintPosOverlay(HWND hwnd) {
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(hwnd, &ps);
+
+    // Full transparent background (Magenta color key)
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    HBRUSH bgBrush = CreateSolidBrush(RGB(255, 0, 255));
+    FillRect(hdc, &rc, bgBrush);
+    DeleteObject(bgBrush);
+
+    // Draw background for coordinates
+    int W = 220;
+    int H = 70;
+    HBRUSH hudBrush = CreateSolidBrush(RGB(20, 20, 20));
+    HPEN hudPen = CreatePen(PS_SOLID, 2, RGB(100, 150, 255));
+    HGDIOBJ oldBrush = SelectObject(hdc, hudBrush);
+    HGDIOBJ oldPen = SelectObject(hdc, hudPen);
+    RoundRect(hdc, 0, 0, W, H, 10, 10);
+    SelectObject(hdc, oldBrush);
+    SelectObject(hdc, oldPen);
+    DeleteObject(hudBrush);
+    DeleteObject(hudPen);
+
+    HFONT hFont = CreateFontA(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(255, 255, 255));
+    HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+    char buf[128];
+    sprintf_s(buf, "HEIGHT: %.1f M", g_currY.load());
+    TextOutA(hdc, 15, 10, buf, (int)strlen(buf));
+
+    sprintf_s(buf, "XYZ: %.1f, %.1f, %.1f", g_currX.load(), g_currY.load(), g_currZ.load());
+    TextOutA(hdc, 15, 36, buf, (int)strlen(buf));
+
+    SelectObject(hdc, hOldFont);
+    DeleteObject(hFont);
+    EndPaint(hwnd, &ps);
+}
+
 static LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
-        case WM_PAINT: PaintOverlay(hwnd); return 0;
+        case WM_PAINT: 
+            if (hwnd == g_posOverlayHwnd) PaintPosOverlay(hwnd);
+            else PaintOverlay(hwnd); 
+            return 0;
         case WM_DESTROY: PostQuitMessage(0); return 0;
     }
     return DefWindowProcA(hwnd, msg, wParam, lParam);
@@ -255,6 +301,26 @@ DWORD WINAPI OverlayThread(LPVOID) {
     if (!hwnd) return 1;
     g_overlayHwnd = hwnd;
 
+    // Create the top-right position overlay
+    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int W_POS = 220, H_POS = 70;
+    int xPosPos = screenWidth - W_POS - 20;
+    int yPosPos = 20;
+
+    HWND hwndPos = CreateWindowExA(
+        WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+        CLASS_NAME, "",
+        WS_POPUP,
+        xPosPos, yPosPos, W_POS, H_POS,
+        nullptr, nullptr, hInst, nullptr);
+
+    if (hwndPos) {
+        g_posOverlayHwnd = hwndPos;
+        SetLayeredWindowAttributes(hwndPos, RGB(255, 0, 255), 220, LWA_COLORKEY | LWA_ALPHA);
+        ShowWindow(hwndPos, SW_SHOWNOACTIVATE);
+        UpdateWindow(hwndPos);
+    }
+
     // Make window magenta = fully transparent (color key), and 85% opacity (220/255) for the rest
     SetLayeredWindowAttributes(hwnd, RGB(255, 0, 255), 220, LWA_COLORKEY | LWA_ALPHA);
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -271,10 +337,12 @@ DWORD WINAPI OverlayThread(LPVOID) {
             DispatchMessageA(&msg);
         } else {
             InvalidateRect(hwnd, nullptr, TRUE);
+            if (g_posOverlayHwnd) InvalidateRect(g_posOverlayHwnd, nullptr, TRUE);
             Sleep(100);
         }
     }
 
+    if (g_posOverlayHwnd) DestroyWindow(g_posOverlayHwnd);
     DestroyWindow(hwnd);
     UnregisterClassA(CLASS_NAME, hInst);
     return 0;
@@ -803,6 +871,27 @@ DWORD WINAPI TrainerThread(LPVOID lpParam) {
             }
         }
         fPressedLast = isFDown;
+
+        // Update current position for HUD
+        static void* hudPlayerGo = nullptr;
+        static int hudFrames = 0;
+        if (hudPlayerGo == nullptr || hudFrames++ > 30) {
+            hudPlayerGo = FindPlayer();
+            hudFrames = 0;
+        }
+        if (hudPlayerGo) {
+            void* transform = InvokeMethod(GameObject_get_transform_Method, hudPlayerGo, nullptr);
+            if (transform) {
+                void* nativeTransform = GetNativePointer(transform);
+                if (nativeTransform && Transform_get_position_fn) {
+                    Vector3 cp;
+                    Transform_get_position_fn(nativeTransform, &cp);
+                    g_currX = cp.x;
+                    g_currY = cp.y;
+                    g_currZ = cp.z;
+                }
+            }
+        }
 
         // Handle fly mode movement
         if (g_flyMode) {
