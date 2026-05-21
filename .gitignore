@@ -1,0 +1,24 @@
+# Compiled binaries
+*.exe
+*.dll
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.exp
+
+# Log files
+*.log
+trainer_log.txt
+
+# IDE files
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.suo
+*.user
+
+# OS files
+.DS_Store
+Thumbs.db
