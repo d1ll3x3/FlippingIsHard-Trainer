@@ -115,73 +115,99 @@ static void PaintOverlay(HWND hwnd) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(hwnd, &ps);
 
-    // Full transparent background
+    // Full transparent background (Magenta color key)
     RECT rc;
     GetClientRect(hwnd, &rc);
-    FillRect(hdc, &rc, (HBRUSH)GetStockObject(BLACK_BRUSH));
+    HBRUSH bgBrush = CreateSolidBrush(RGB(255, 0, 255));
+    FillRect(hdc, &rc, bgBrush);
+    DeleteObject(bgBrush);
+
+    // Draw a dark rounded rectangle for HUD background
+    int W = 360;
+    int hudHeight = 160;
+    if (g_flyModeActive.load()) hudHeight += 48;
+    
+    HBRUSH hudBrush = CreateSolidBrush(RGB(20, 20, 20));
+    HPEN hudPen = CreatePen(PS_SOLID, 2, RGB(100, 150, 255)); // Blueish border
+    HGDIOBJ oldBrush = SelectObject(hdc, hudBrush);
+    HGDIOBJ oldPen = SelectObject(hdc, hudPen);
+
+    RoundRect(hdc, 0, 0, W, hudHeight, 15, 15);
+
+    SelectObject(hdc, oldBrush);
+    SelectObject(hdc, oldPen);
+    DeleteObject(hudBrush);
+    DeleteObject(hudPen);
 
     // Choose a nice font
     HFONT hFont = CreateFontA(
-        22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
-    HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+    HFONT hTitleFont = CreateFontA(
+        22, 0, 0, 0, FW_HEAVY, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 
     SetBkMode(hdc, TRANSPARENT);
 
-    int yPos = 8;
+    int yPos = 12;
 
     // Header
-    SetTextColor(hdc, RGB(255, 220, 0)); // gold
-    const char* header = "[Trainer]";
+    HFONT hOldFont = (HFONT)SelectObject(hdc, hTitleFont);
+    SetTextColor(hdc, RGB(0, 200, 255)); // nice blue
+    const char* header = "  FLIPPING IS HARD TRAINER";
     TextOutA(hdc, 10, yPos, header, (int)strlen(header));
-    yPos += 26;
+    yPos += 30;
+
+    SelectObject(hdc, hFont);
 
     // Fly mode status (if active, show prominently)
     if (g_flyModeActive.load()) {
-        SetTextColor(hdc, RGB(255, 100, 255)); // bright magenta
-        const char* flyStatus = "[FLY MODE ACTIVE]";
+        SetTextColor(hdc, RGB(0, 255, 255)); // cyan
+        const char* flyStatus = "  \xBB FLY MODE ACTIVE";
         TextOutA(hdc, 10, yPos, flyStatus, (int)strlen(flyStatus));
         yPos += 24;
         
         // Fly controls
-        SetTextColor(hdc, RGB(200, 200, 200)); // light grey
-        const char* flyControls = "WASD/Space/Ctrl + Shift=Turbo";
+        SetTextColor(hdc, RGB(180, 180, 180)); // light grey
+        const char* flyControls = "     WASD/Space/Ctrl + Shift=Turbo";
         TextOutA(hdc, 10, yPos, flyControls, (int)strlen(flyControls));
         yPos += 24;
     }
 
     // Shortcut 1 – always shown
-    SetTextColor(hdc, RGB(100, 220, 255)); // light blue
-    const char* line1 = "Shift+R  ->  Save position";
+    SetTextColor(hdc, RGB(255, 255, 255)); // white
+    const char* line1 = "  Shift+R   :  Save position";
     TextOutA(hdc, 10, yPos, line1, (int)strlen(line1));
     yPos += 24;
 
     // Shortcut 2 – green when position is saved, grey otherwise
     if (g_hasSavedPosOverlay.load()) {
-        SetTextColor(hdc, RGB(80, 255, 120)); // bright green
+        SetTextColor(hdc, RGB(50, 255, 100)); // bright green
+        const char* line2 = "  R         :  Teleport (Ready)";
+        TextOutA(hdc, 10, yPos, line2, (int)strlen(line2));
     } else {
-        SetTextColor(hdc, RGB(150, 150, 150)); // grey (not saved yet)
+        SetTextColor(hdc, RGB(120, 120, 120)); // grey (not saved yet)
+        const char* line2 = "  R         :  Teleport (Save first)";
+        TextOutA(hdc, 10, yPos, line2, (int)strlen(line2));
     }
-    const char* line2 = "R        ->  Teleport";
-    TextOutA(hdc, 10, yPos, line2, (int)strlen(line2));
     yPos += 24;
 
     // Fly mode toggle
     SetTextColor(hdc, RGB(255, 180, 100)); // orange
-    const char* line3 = "F        ->  Toggle Fly Mode";
+    const char* line3 = "  F         :  Toggle Fly Mode";
     TextOutA(hdc, 10, yPos, line3, (int)strlen(line3));
     yPos += 24;
 
-    // Hint when no position saved (only if fly mode not active)
-    if (!g_hasSavedPosOverlay.load() && !g_flyModeActive.load()) {
-        SetTextColor(hdc, RGB(200, 80, 80)); // red hint
-        const char* hint = "(Save first with Shift+R)";
-        TextOutA(hdc, 10, yPos, hint, (int)strlen(hint));
-    }
+    // END to unload
+    SetTextColor(hdc, RGB(200, 80, 80)); // red
+    const char* line4 = "  END       :  Unload Trainer";
+    TextOutA(hdc, 10, yPos, line4, (int)strlen(line4));
 
     SelectObject(hdc, hOldFont);
     DeleteObject(hFont);
+    DeleteObject(hTitleFont);
     EndPaint(hwnd, &ps);
 }
 
@@ -202,15 +228,16 @@ DWORD WINAPI OverlayThread(LPVOID) {
     wc.lpfnWndProc   = OverlayWndProc;
     wc.hInstance     = hInst;
     wc.lpszClassName = CLASS_NAME;
+    wc.hbrBackground = CreateSolidBrush(RGB(255, 0, 255)); // Magenta background
     RegisterClassExA(&wc);
 
     // Window size to fit the text block (increased for fly mode display)
-    int W = 350, H = 180;
+    int W = 360, H = 210;
 
     // Position bottom-left
     int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-    int xPos = 12;
-    int yPos = screenHeight - H - 12;
+    int xPos = 20;
+    int yPos = screenHeight - H - 20;
 
     HWND hwnd = CreateWindowExA(
         WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
@@ -222,8 +249,8 @@ DWORD WINAPI OverlayThread(LPVOID) {
     if (!hwnd) return 1;
     g_overlayHwnd = hwnd;
 
-    // Make window black = fully transparent (color key), rest visible
-    SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
+    // Make window magenta = fully transparent (color key), and 85% opacity (220/255) for the rest
+    SetLayeredWindowAttributes(hwnd, RGB(255, 0, 255), 220, LWA_COLORKEY | LWA_ALPHA);
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     UpdateWindow(hwnd);
 
